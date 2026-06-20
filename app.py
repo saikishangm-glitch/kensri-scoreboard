@@ -137,4 +137,7 @@ if not st.session_state.admin_logged_in:
 else:
     # Admin is logged in
     st.sidebar.success("✅ Logged in as Admin")
-    if st.sidebar.
+    if st.sidebar.button("Log Out & Return to Public View"):
+        st.session_state.admin_logged_in = False
+        st.rerun()
+    view_mode = "Admin Panel"
