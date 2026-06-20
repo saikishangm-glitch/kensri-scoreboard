@@ -141,3 +141,139 @@ else:
         st.session_state.admin_logged_in = False
         st.rerun()
     view_mode = "Admin Panel"
+
+
+# --- View Logic: Public Scoreboard ---
+if view_mode == "Public Scoreboard":
+    st.markdown(f"<p style='font-size: 18px; font-weight: 600; color: #333;'>📅 <b>Date updated on:</b> <span style='color: #7F1D1D; font-weight: 700;'>{app_data['last_updated']}</span></p>", unsafe_allow_html=True)
+    
+    board = {net: {cat: 0 for cat in CATEGORIES} for net in NETWORKS}
+    for entry in app_data["entries"]:
+        if entry["network"] in board and entry["category"] in board[entry["network"]]:
+            board[entry["network"]][entry["category"]] += int(entry["points"])
+        
+    network_colors = {
+        "AUSTRALIA": "#023020", "NORTH AMERICA": "#0BA3FF", "SOUTH AMERICA": "#FFFF2E",
+        "AFRICA": "#7030A0", "EUROPE": "#000080", "ASIA": "#FF2600"
+    }
+    
+    table_html = "<table class='scoreboard-table'><thead><tr><th style='text-align: left; padding-left: 15px; width: 25%;'>Network</th>"
+    for cat in CATEGORIES: table_html += f"<th>{cat}</th>"
+    table_html += "<th>Total Score</th></tr></thead><tbody>"
+    
+    for net in NETWORKS:
+        row_bg = network_colors[net]
+        total_score = sum(board[net].values())
+        table_html += f"<tr style='background-color: {row_bg};'><td class='network-name'>{net}</td>"
+        for cat in CATEGORIES:
+            table_html += f"<td><div class='score-box'>{board[net][cat]}</div></td>"
+        table_html += f"<td><div class='score-box'>{total_score}</div></td></tr>"
+    table_html += "</tbody></table>"
+    
+    st.markdown(table_html, unsafe_allow_html=True)
+    st.divider()
+    
+    # Render Achievements (Handling Negative Points)
+    st.markdown("<h3 style='color: #002060; font-weight: 700;'>🏆 Recent Activities</h3>", unsafe_allow_html=True)
+    if app_data["entries"]:
+        for entry in reversed(app_data["entries"]):
+            if int(entry['points']) < 0:
+                st.warning(f"⚠️ **{entry['student']}** — {entry['competition']}. **Lost {abs(int(entry['points']))}** {entry['category']} points for **{entry['network']}**.")
+            else:
+                st.info(f"🏅 **{entry['student']}** — **{entry['competition']}**! Earned **{entry['points']}** {entry['category']} for **{entry['network']}**.")
+    else:
+        st.write("*No achievement milestones recorded yet.*")
+
+
+# --- View Logic: Admin Panel ---
+elif view_mode == "Admin Panel":
+    st.subheader("🛠️ Admin Dashboard")
+    
+    tab_award, tab_deduct, tab_reset = st.tabs(["🌟 Award Points", "⚠️ Deduct Points", "⚙️ Database Control"])
+    
+    # TAB 1: AWARD POINTS
+    with tab_award:
+        with st.form("add_points_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                selected_network = st.selectbox("Select Network", NETWORKS, key="award_net")
+                selected_category = st.selectbox("Select Category", CATEGORIES, key="award_cat")
+                points = st.number_input("Points to Award", min_value=1, step=1, key="award_pts")
+            with col2:
+                student_name = st.text_input("Student Name", key="award_stu")
+                
+            st.markdown("#### Achievement Details")
+            achievement_type = st.radio("Type of Achievement", ["Secured a Place / Won", "Participation"], key="award_type")
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                event_name = st.text_input("Event Name (e.g., Inter-School Debate)", key="award_evt")
+            with col4:
+                event_date = st.date_input("Date of Event", key="award_dt")
+                
+            place_secured = ""
+            if achievement_type == "Secured a Place / Won":
+                place_secured = st.text_input("Place Secured (e.g., 1st, Gold)", key="award_place")
+                
+            submitted = st.form_submit_button("Publish & Save Score Updates", type="primary")
+            
+            if submitted:
+                if student_name.strip() and event_name.strip():
+                    if achievement_type == "Secured a Place / Won" and not place_secured.strip():
+                        st.error("Submission rejected: Please specify the place secured.")
+                    else:
+                        date_str = event_date.strftime("%d/%m/%Y")
+                        narrative = f"{place_secured} Place in {event_name} on {date_str}" if achievement_type == "Secured a Place / Won" else f"Participated in {event_name} on {date_str}"
+                            
+                        new_entry = {
+                            "network": selected_network, "category": selected_category, "points": points,
+                            "student": student_name, "competition": narrative, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        if save_data_to_sheets(new_entry):
+                            st.success("🎉 Data safely written!")
+                else:
+                    st.error("Submission rejected: Please fill all required fields.")
+
+    # TAB 2: DEDUCT POINTS
+    with tab_deduct:
+        with st.form("deduct_points_form"):
+            st.markdown("Use this panel to log misconduct or rule violations. Points will be subtracted.")
+            col1, col2 = st.columns(2)
+            with col1:
+                deduct_network = st.selectbox("Select Network", NETWORKS, key="deduct_net")
+                deduct_category = st.selectbox("Select Category to Deduct From", CATEGORIES, key="deduct_cat")
+                deduct_points = st.number_input("Points to Deduct", min_value=1, step=1, key="deduct_pts")
+            with col2:
+                deduct_student = st.text_input("Student Name (Optional)", key="deduct_stu")
+                deduct_reason = st.text_input("Reason / Violation Event", key="deduct_reason")
+            
+            deduct_submitted = st.form_submit_button("Apply Deduction", type="primary")
+            
+            if deduct_submitted:
+                if deduct_reason.strip():
+                    student = deduct_student.strip() if deduct_student.strip() else "Team Penalty"
+                    new_entry = {
+                        "network": deduct_network, "category": deduct_category, "points": -deduct_points, # Save as negative
+                        "student": student, "competition": f"Penalty: {deduct_reason}", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    if save_data_to_sheets(new_entry):
+                        st.success(f"⚠️ Penalty applied: {deduct_points} points deducted from {deduct_network}.")
+                else:
+                    st.error("Submission rejected: Please provide a reason for the deduction.")
+
+    # TAB 3: RESET DATABASE
+    with tab_reset:
+        st.markdown("#### Scoreboard Reset Controls")
+        st.warning("⚠️ **Warning:** Resetting will permanently delete the selected entries from the Google Sheet. This action cannot be undone.")
+        
+        reset_target = st.selectbox("Select Target to Reset", ["ALL"] + NETWORKS)
+        
+        # Checkbox confirmation before allowing the reset button to be clicked
+        confirm_reset = st.checkbox("I understand the consequences and want to proceed with the reset.")
+        
+        if st.button("Wipe Database Data", type="primary", disabled=not confirm_reset):
+            if reset_data_in_sheets(reset_target):
+                if reset_target == "ALL":
+                    st.success("💥 The entire scoreboard has been reset.")
+                else:
+                    st.success(f"💥 All records for **{reset_target}** have been erased.")
