@@ -5,7 +5,7 @@ import gspread
 
 # --- Configuration & Setup ---
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1EdBKWTfCjK1gA7sxT2TwhSTcuE2zb_jA4oYP55c6wJU/edit"
-LOGO_URL = "logo.png"
+LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS4CIdhBTkIUp9FpB7aaWpBMZkHMJS2RzOyXQ&s"
 
 NETWORKS = ["AUSTRALIA", "NORTH AMERICA", "SOUTH AMERICA", "AFRICA", "EUROPE", "ASIA"]
 CATEGORIES = ["Scholar Points", "Athlete Points", "Artist Points", "Leader Points"]
