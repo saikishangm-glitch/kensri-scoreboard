@@ -193,33 +193,38 @@ if view_mode == "Public Scoreboard":
         else:
             st.write("*No achievement milestones recorded yet.*")
 
-    # TABS 1-6: INDIVIDUAL CONTINENT DATABASES
+# TABS 1-6: INDIVIDUAL CONTINENT DATABASES
     for i, net in enumerate(NETWORKS):
         with tabs[i+1]:
             st.markdown(f"<h3 style='color: {network_colors[net]};'>Database: {net} Achievers</h3>", unsafe_allow_html=True)
             
-            # Filter entries for the specific network
-            net_entries = [e for e in app_data["entries"] if e["network"] == net]
+            # BULLETPROOF FILTERING: Strips accidental spaces and ignores uppercase/lowercase
+            net_entries = [
+                e for e in app_data["entries"] 
+                if str(e.get("network", "")).strip().upper() == net.upper()
+            ]
             
             if net_entries:
                 df = pd.DataFrame(net_entries)
-                # Reorder and format the columns for a professional look
-                df = df[['timestamp', 'student', 'category', 'points', 'competition']]
-                df.columns = ['Date Logged', 'Student Name', 'Category', 'Points', 'Achievement / Event']
                 
-                # Highlight negative points visually in the dataframe
-                def color_negative_red(val):
-                    color = '#ff4b4b' if (isinstance(val, int) and val < 0) else 'inherit'
-                    return f'color: {color}'
-
-                st.dataframe(
-                    df.style.map(color_negative_red, subset=['Points']),
-                    use_container_width=True, 
-                    hide_index=True,
-                    height=400
-                )
+                # Check if the expected columns actually exist before filtering
+                expected_cols = ['timestamp', 'student', 'category', 'points', 'competition']
+                available_cols = [c for c in expected_cols if c in df.columns]
+                
+                df = df[available_cols]
+                
+                # Rename the columns if we have all 5 of them
+                if len(available_cols) == 5:
+                    df.columns = ['Date Logged', 'Student Name', 'Category', 'Points', 'Achievement / Event']
+                
+                # Force the 'Points' column to be numbers (prevents string errors)
+                if 'Points' in df.columns:
+                    df['Points'] = pd.to_numeric(df['Points'], errors='coerce').fillna(0).astype(int)
+                
+                # Simple, safe dataframe render without fancy styling
+                st.dataframe(df, use_container_width=True, hide_index=True, height=400)
             else:
-                st.info(f"No records found for {net} yet. Start adding points in the Admin Panel!")
+                st.info(f"No records found for {net} yet.")
 
 
 # --- View Logic: Admin Panel ---
