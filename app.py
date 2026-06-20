@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
 # --- Configuration & Setup ---
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1EdBKWTfCjK1gA7sxT2TwhSTcuE2zb_jA4oYP55c6wJU/edit"
@@ -36,20 +35,25 @@ def load_data_from_sheets():
 
 def save_data_to_sheets(new_entry):
     """Appends a new row of points to the Google Sheet."""
-    gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
-    sh = gc.open_by_url(GOOGLE_SHEET_URL)
-    worksheet = sh.get_worksheet(0)
-    
-    row_to_add = [
-        new_entry["network"],
-        new_entry["category"],
-        int(new_entry["points"]),
-        new_entry["student"],
-        new_entry["competition"],
-        new_entry["timestamp"]
-    ]
-    worksheet.append_row(row_to_add)
-    st.cache_data.clear()
+    try:
+        gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
+        sh = gc.open_by_url(GOOGLE_SHEET_URL)
+        worksheet = sh.get_worksheet(0)
+        
+        row_to_add = [
+            new_entry["network"],
+            new_entry["category"],
+            int(new_entry["points"]),
+            new_entry["student"],
+            new_entry["competition"],
+            new_entry["timestamp"]
+        ]
+        worksheet.append_row(row_to_add)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Submission Error: {e}")
+        return False
 
 # --- App Layout & Styling ---
 st.set_page_config(page_title="KENSRI Score Board", layout="wide")
@@ -61,11 +65,7 @@ html, body, [class*="css"], .stMarkdown { font-family: 'Poppins', sans-serif !im
 .scoreboard-table { width: 100%; border-collapse: separate; border-spacing: 0 12px; margin-top: 20px; }
 .scoreboard-table th { background-color: #000000; color: white; text-align: center; padding: 15px 10px; font-weight: 700; font-size: 16px; }
 .scoreboard-table td { padding: 14px 15px; color: white; font-weight: 700; font-size: 18px; vertical-align: middle; }
-.network-name { 
-    font-size: 20px !important; 
-    letter-spacing: 1px; 
-    text-shadow: 1px 1px 4px rgba(0,0,0,0.6);
-}
+.network-name { font-size: 20px !important; letter-spacing: 1px; text-shadow: 1px 1px 4px rgba(0,0,0,0.6); }
 .score-box { background-color: #ffffff; color: #000000 !important; border-radius: 4px; padding: 6px 0; width: 100px; text-align: center; font-weight: 800; font-size: 18px; margin: 0 auto; display: block; box-shadow: 0 2px 4px rgba(0,0,0,0.15); text-shadow: none; }
 </style>
 """, unsafe_allow_html=True)
@@ -75,14 +75,16 @@ st.markdown("<h2 style='text-align: center; color: white; background-color: #7F1
 
 app_data = load_data_from_sheets()
 
-# --- Sidebar Navigation ---
+# --- Sidebar ---
 st.sidebar.title("Navigation")
-view_mode = st.sidebar.radio("Select View:", ["Public Scoreboard", "Admin Panel"])
+st.sidebar.markdown("Welcome to the KENSRI Network Score Board.")
 st.sidebar.markdown("---")
+# Stealth Admin Login
+st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True)
+password_attempt = st.sidebar.text_input(" ", type="password", placeholder="...") 
+view_mode = "Admin Panel" if password_attempt == "admin123" else "Public Scoreboard"
 
-# ==========================================
-# FRONT END: PUBLIC VIEW
-# ==========================================
+# --- Main Logic ---
 if view_mode == "Public Scoreboard":
     st.markdown(f"<p style='font-size: 18px; font-weight: 600; color: #333;'>📅 <b>Date updated on:</b> <span style='color: #7F1D1D; font-weight: 700;'>{app_data['last_updated']}</span></p>", unsafe_allow_html=True)
     
@@ -92,12 +94,8 @@ if view_mode == "Public Scoreboard":
             board[entry["network"]][entry["category"]] += int(entry["points"])
         
     network_colors = {
-        "AUSTRALIA": "#023020",
-        "NORTH AMERICA": "#0BA3FF",
-        "SOUTH AMERICA": "#FFFF2E",
-        "AFRICA": "#7030A0",
-        "EUROPE": "#000080",
-        "ASIA": "#FF2600"
+        "AUSTRALIA": "#023020", "NORTH AMERICA": "#0BA3FF", "SOUTH AMERICA": "#FFFF2E",
+        "AFRICA": "#7030A0", "EUROPE": "#000080", "ASIA": "#FF2600"
     }
     
     table_html = "<table class='scoreboard-table'><thead><tr><th style='text-align: left; padding-left: 15px; width: 25%;'>Network</th>"
@@ -119,47 +117,52 @@ if view_mode == "Public Scoreboard":
     st.markdown("<h3 style='color: #002060; font-weight: 700;'>🏆 Recent Achievements</h3>", unsafe_allow_html=True)
     if app_data["entries"]:
         for entry in reversed(app_data["entries"]):
-            st.info(f"🏅 **{entry['student']}** won **{entry['competition']}**! Earned **{entry['points']}** {entry['category']} for **{entry['network']}**.")
+            st.info(f"🏅 **{entry['student']}** — **{entry['competition']}**! Earned **{entry['points']}** {entry['category']} for **{entry['network']}**.")
     else:
         st.write("*No achievement milestones recorded yet.*")
 
-# ==========================================
-# BACK END: ADMIN VIEW
-# ==========================================
 elif view_mode == "Admin Panel":
-    password_attempt = st.sidebar.text_input("Enter Admin Password", type="password")
+    st.sidebar.success("Access Verified: Welcome Admin")
+    st.subheader("Data Entry Panel")
     
-    if password_attempt == "admin123":
-        st.sidebar.success("Access Verified")
-        st.subheader("Data Entry Panel")
-        
-        with st.form("add_points_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                selected_network = st.selectbox("Select Network", NETWORKS)
-                selected_category = st.selectbox("Select Category", CATEGORIES)
-                points = st.number_input("Points to Award", min_value=1, step=1)
-            with col2:
-                student_name = st.text_input("Student Name")
-                competition_name = st.text_input("Competition Name / Event Name")
-                
-            submitted = st.form_submit_button("Publish & Save Score Updates")
+    with st.form("add_points_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_network = st.selectbox("Select Network", NETWORKS)
+            selected_category = st.selectbox("Select Category", CATEGORIES)
+            points = st.number_input("Points to Award", min_value=1, step=1)
+        with col2:
+            student_name = st.text_input("Student Name")
             
-            if submitted:
-                if student_name.strip() and competition_name.strip():
-                    new_entry = {
-                        "network": selected_network,
-                        "category": selected_category,
-                        "points": points,
-                        "student": student_name,
-                        "competition": competition_name,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    save_data_to_sheets(new_entry)
-                    st.success("🎉 Data safely written to Google Sheets! Switch back to view changes.")
+        st.markdown("---")
+        st.markdown("#### Achievement Details")
+        achievement_type = st.radio("Type of Achievement", ["Secured a Place / Won", "Participation"])
+        
+        col3, col4 = st.columns(2)
+        with col3:
+            event_name = st.text_input("Event Name (e.g., Inter-School Debate, 100m Sprint)")
+        with col4:
+            event_date = st.date_input("Date of Event")
+            
+        place_secured = ""
+        if achievement_type == "Secured a Place / Won":
+            place_secured = st.text_input("Place Secured (e.g., 1st, Gold, Runner-up)")
+            
+        submitted = st.form_submit_button("Publish & Save Score Updates")
+        
+        if submitted:
+            if student_name.strip() and event_name.strip():
+                if achievement_type == "Secured a Place / Won" and not place_secured.strip():
+                    st.error("Submission rejected: Please specify the place secured.")
                 else:
-                    st.error("Submission rejected: Please fill all fields.")
-    elif password_attempt != "":
-        st.sidebar.error("Incorrect Credentials")
-    else:
-        st.warning("🔒 Enter administrative credentials on the sidebar menu to alter network metrics.")
+                    date_str = event_date.strftime("%d/%m/%Y")
+                    narrative = f"{place_secured} Place in {event_name} on {date_str}" if achievement_type == "Secured a Place / Won" else f"Participated in {event_name} on {date_str}"
+                        
+                    new_entry = {
+                        "network": selected_network, "category": selected_category, "points": points,
+                        "student": student_name, "competition": narrative, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    if save_data_to_sheets(new_entry):
+                        st.success("🎉 Data safely written!")
+            else:
+                st.error("Submission rejected: Please fill all fields.")
