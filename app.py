@@ -13,7 +13,6 @@ CATEGORIES = ["Scholar Points", "Athlete Points", "Artist Points", "Leader Point
 # --- Database Functions ---
 @st.cache_data(ttl=60)
 def load_data_from_sheets():
-    """Connects to Google Sheets and reads the database."""
     try:
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
         sh = gc.open_by_key("1EdBKWTfCjK1gA7sxT2TwhSTcuE2zb_jA4oYP55c6wJU")
@@ -36,19 +35,14 @@ def load_data_from_sheets():
         return {"last_updated": "Error", "entries": []}
 
 def save_data_to_sheets(new_entry):
-    """Appends a new row of points to the Google Sheet."""
     try:
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
         sh = gc.open_by_url(GOOGLE_SHEET_URL)
         worksheet = sh.get_worksheet(0)
         
         row_to_add = [
-            new_entry["network"],
-            new_entry["category"],
-            int(new_entry["points"]),
-            new_entry["student"],
-            new_entry["competition"],
-            new_entry["timestamp"]
+            new_entry["network"], new_entry["category"], int(new_entry["points"]),
+            new_entry["student"], new_entry["competition"], new_entry["timestamp"]
         ]
         worksheet.append_row(row_to_add)
         st.cache_data.clear()
@@ -58,15 +52,13 @@ def save_data_to_sheets(new_entry):
         return False
 
 def reset_data_in_sheets(network_to_reset):
-    """Clears entries for a specific network or all networks, preserving headers."""
     try:
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
         sh = gc.open_by_url(GOOGLE_SHEET_URL)
         worksheet = sh.get_worksheet(0)
         
         data = worksheet.get_all_values()
-        if len(data) <= 1:
-            return True # Nothing to delete (only headers remain)
+        if len(data) <= 1: return True
 
         headers = data[0]
         rows = data[1:]
@@ -75,7 +67,6 @@ def reset_data_in_sheets(network_to_reset):
         worksheet.append_row(headers)
         
         if network_to_reset != "ALL":
-            # Filter out the network we want to reset and append the rest back
             filtered_rows = [row for row in rows if row[0] != network_to_reset]
             if filtered_rows:
                 worksheet.append_rows(filtered_rows)
@@ -88,17 +79,19 @@ def reset_data_in_sheets(network_to_reset):
 
 
 # --- App Layout & Styling ---
-st.set_page_config(page_title="KENSRI Score Board", layout="wide")
+st.set_page_config(page_title="KENSRI Score Board", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
 html, body, [class*="css"], .stMarkdown { font-family: 'Poppins', sans-serif !important; }
-.scoreboard-table { width: 100%; border-collapse: separate; border-spacing: 0 12px; margin-top: 20px; }
+.scoreboard-table { width: 100%; border-collapse: separate; border-spacing: 0 12px; margin-top: 10px; }
 .scoreboard-table th { background-color: #000000; color: white; text-align: center; padding: 15px 10px; font-weight: 700; font-size: 16px; }
 .scoreboard-table td { padding: 14px 15px; color: white; font-weight: 700; font-size: 18px; vertical-align: middle; }
 .network-name { font-size: 20px !important; letter-spacing: 1px; text-shadow: 1px 1px 4px rgba(0,0,0,0.6); }
-.score-box { background-color: #ffffff; color: #000000 !important; border-radius: 4px; padding: 6px 0; width: 100px; text-align: center; font-weight: 800; font-size: 18px; margin: 0 auto; display: block; box-shadow: 0 2px 4px rgba(0,0,0,0.15); text-shadow: none; }
+.score-box { background-color: #ffffff; color: #000000 !important; border-radius: 4px; padding: 6px 0; width: 100px; text-align: center; font-weight: 800; font-size: 18px; margin: 0 auto; display: block; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+div[data-baseweb="tab-list"] { gap: 8px; background-color: #f0f2f6; padding: 10px; border-radius: 8px; }
+div[data-baseweb="tab"] { padding: 10px 20px; border-radius: 4px; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,73 +109,117 @@ st.markdown("<h2 style='text-align: center; color: white; background-color: #7F1
 
 app_data = load_data_from_sheets()
 
-
 # --- Session State for Authentication ---
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
 # --- Sidebar & Navigation ---
-st.sidebar.title("Navigation")
-st.sidebar.markdown("Welcome to the KENSRI Network Score Board.")
-st.sidebar.markdown("---")
-
-if not st.session_state.admin_logged_in:
-    # Stealth Admin Login
-    st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True)
-    password_attempt = st.sidebar.text_input("Admin Access", type="password", placeholder="...") 
-    if password_attempt == "admin123":
-        st.session_state.admin_logged_in = True
-        st.rerun()
-    view_mode = "Public Scoreboard"
-else:
-    # Admin is logged in
-    st.sidebar.success("✅ Logged in as Admin")
-    if st.sidebar.button("Log Out & Return to Public View"):
-        st.session_state.admin_logged_in = False
-        st.rerun()
-    view_mode = "Admin Panel"
-
-
-# --- View Logic: Public Scoreboard ---
-if view_mode == "Public Scoreboard":
-    st.markdown(f"<p style='font-size: 18px; font-weight: 600; color: #333;'>📅 <b>Date updated on:</b> <span style='color: #7F1D1D; font-weight: 700;'>{app_data['last_updated']}</span></p>", unsafe_allow_html=True)
+with st.sidebar:
+    st.title("🧭 Navigation")
+    st.markdown("Welcome to the KENSRI Network.")
+    st.markdown(f"<p style='font-size: 14px; color: #555;'>📅 <b>Last Sync:</b> {app_data['last_updated']}</p>", unsafe_allow_html=True)
+    st.markdown("---")
     
-    board = {net: {cat: 0 for cat in CATEGORIES} for net in NETWORKS}
-    for entry in app_data["entries"]:
-        if entry["network"] in board and entry["category"] in board[entry["network"]]:
-            board[entry["network"]][entry["category"]] += int(entry["points"])
+    if not st.session_state.admin_logged_in:
+        view_mode = "Public Scoreboard"
         
-    network_colors = {
-        "AUSTRALIA": "#023020", "NORTH AMERICA": "#0BA3FF", "SOUTH AMERICA": "#FFFF2E",
-        "AFRICA": "#7030A0", "EUROPE": "#000080", "ASIA": "#FF2600"
-    }
-    
-    table_html = "<table class='scoreboard-table'><thead><tr><th style='text-align: left; padding-left: 15px; width: 25%;'>Network</th>"
-    for cat in CATEGORIES: table_html += f"<th>{cat}</th>"
-    table_html += "<th>Total Score</th></tr></thead><tbody>"
-    
-    for net in NETWORKS:
-        row_bg = network_colors[net]
-        total_score = sum(board[net].values())
-        table_html += f"<tr style='background-color: {row_bg};'><td class='network-name'>{net}</td>"
-        for cat in CATEGORIES:
-            table_html += f"<td><div class='score-box'>{board[net][cat]}</div></td>"
-        table_html += f"<td><div class='score-box'>{total_score}</div></td></tr>"
-    table_html += "</tbody></table>"
-    
-    st.markdown(table_html, unsafe_allow_html=True)
-    st.divider()
-    
-    # Render Achievements (Handling Negative Points)
-    st.markdown("<h3 style='color: #002060; font-weight: 700;'>🏆 Recent Activities</h3>", unsafe_allow_html=True)
-    if app_data["entries"]:
-        for entry in reversed(app_data["entries"]):
-            if int(entry['points']) < 0:
-                st.warning(f"⚠️ **{entry['student']}** — {entry['competition']}. **Lost {abs(int(entry['points']))}** {entry['category']} points for **{entry['network']}**.")
-            else:
-                st.info(f"🏅 **{entry['student']}** — **{entry['competition']}**! Earned **{entry['points']}** {entry['category']} for **{entry['network']}**.")
+        # Spacer to push the hidden login to the bottom
+        st.markdown("<br>" * 12, unsafe_allow_html=True)
+        
+        # Deceptive Admin Login Panel
+        with st.expander("⚙️ System Info", expanded=False):
+            st.caption("KENSRI Scoreboard v2.5")
+            st.caption("Status: All Systems Operational")
+            # Hidden input field
+            password_attempt = st.text_input("Diag_Code", type="password", label_visibility="collapsed", placeholder="Enter diagnostic code...")
+            if password_attempt == "admin123":
+                st.session_state.admin_logged_in = True
+                st.rerun()
     else:
-        st.write("*No achievement milestones recorded yet.*")
+        view_mode = "Admin Panel"
+        st.success("✅ Authenticated as Admin")
+        st.markdown("You have full read/write access to the database.")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Clear return button
+        if st.button("🚪 Exit Admin Panel", type="primary", use_container_width=True):
+            st.session_state.admin_logged_in = False
+            st.rerun()
+
+
+# --- View Logic: Public Scoreboard & Databases ---
+if view_mode == "Public Scoreboard":
+    
+    # Modern Tabbed Navigation for the Continents
+    tab_titles = ["🌍 Global Overview"] + [f"📍 {net}" for net in NETWORKS]
+    tabs = st.tabs(tab_titles)
+    
+    # TAB 0: GLOBAL OVERVIEW
+    with tabs[0]:
+        board = {net: {cat: 0 for cat in CATEGORIES} for net in NETWORKS}
+        for entry in app_data["entries"]:
+            if entry["network"] in board and entry["category"] in board[entry["network"]]:
+                board[entry["network"]][entry["category"]] += int(entry["points"])
+            
+        network_colors = {
+            "AUSTRALIA": "#023020", "NORTH AMERICA": "#0BA3FF", "SOUTH AMERICA": "#FFFF2E",
+            "AFRICA": "#7030A0", "EUROPE": "#000080", "ASIA": "#FF2600"
+        }
+        
+        table_html = "<table class='scoreboard-table'><thead><tr><th style='text-align: left; padding-left: 15px; width: 25%;'>Network</th>"
+        for cat in CATEGORIES: table_html += f"<th>{cat}</th>"
+        table_html += "<th>Total Score</th></tr></thead><tbody>"
+        
+        for net in NETWORKS:
+            row_bg = network_colors[net]
+            total_score = sum(board[net].values())
+            table_html += f"<tr style='background-color: {row_bg};'><td class='network-name'>{net}</td>"
+            for cat in CATEGORIES:
+                table_html += f"<td><div class='score-box'>{board[net][cat]}</div></td>"
+            table_html += f"<td><div class='score-box'>{total_score}</div></td></tr>"
+        table_html += "</tbody></table>"
+        
+        st.markdown(table_html, unsafe_allow_html=True)
+        st.divider()
+        
+        st.markdown("### 🏆 Recent Network Activities")
+        if app_data["entries"]:
+            # Show only the last 10 entries globally to save space
+            for entry in list(reversed(app_data["entries"]))[:10]:
+                if int(entry['points']) < 0:
+                    st.warning(f"⚠️ **{entry['student']}** — {entry['competition']}. **Lost {abs(int(entry['points']))}** {entry['category']} points for **{entry['network']}**.")
+                else:
+                    st.info(f"🏅 **{entry['student']}** — **{entry['competition']}**! Earned **{entry['points']}** {entry['category']} for **{entry['network']}**.")
+        else:
+            st.write("*No achievement milestones recorded yet.*")
+
+    # TABS 1-6: INDIVIDUAL CONTINENT DATABASES
+    for i, net in enumerate(NETWORKS):
+        with tabs[i+1]:
+            st.markdown(f"<h3 style='color: {network_colors[net]};'>Database: {net} Achievers</h3>", unsafe_allow_html=True)
+            
+            # Filter entries for the specific network
+            net_entries = [e for e in app_data["entries"] if e["network"] == net]
+            
+            if net_entries:
+                df = pd.DataFrame(net_entries)
+                # Reorder and format the columns for a professional look
+                df = df[['timestamp', 'student', 'category', 'points', 'competition']]
+                df.columns = ['Date Logged', 'Student Name', 'Category', 'Points', 'Achievement / Event']
+                
+                # Highlight negative points visually in the dataframe
+                def color_negative_red(val):
+                    color = '#ff4b4b' if (isinstance(val, int) and val < 0) else 'inherit'
+                    return f'color: {color}'
+
+                st.dataframe(
+                    df.style.map(color_negative_red, subset=['Points']),
+                    use_container_width=True, 
+                    hide_index=True,
+                    height=400
+                )
+            else:
+                st.info(f"No records found for {net} yet. Start adding points in the Admin Panel!")
 
 
 # --- View Logic: Admin Panel ---
@@ -253,7 +290,7 @@ elif view_mode == "Admin Panel":
                 if deduct_reason.strip():
                     student = deduct_student.strip() if deduct_student.strip() else "Team Penalty"
                     new_entry = {
-                        "network": deduct_network, "category": deduct_category, "points": -deduct_points, # Save as negative
+                        "network": deduct_network, "category": deduct_category, "points": -deduct_points,
                         "student": student, "competition": f"Penalty: {deduct_reason}", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
                     if save_data_to_sheets(new_entry):
@@ -267,13 +304,8 @@ elif view_mode == "Admin Panel":
         st.warning("⚠️ **Warning:** Resetting will permanently delete the selected entries from the Google Sheet. This action cannot be undone.")
         
         reset_target = st.selectbox("Select Target to Reset", ["ALL"] + NETWORKS)
-        
-        # Checkbox confirmation before allowing the reset button to be clicked
         confirm_reset = st.checkbox("I understand the consequences and want to proceed with the reset.")
         
         if st.button("Wipe Database Data", type="primary", disabled=not confirm_reset):
             if reset_data_in_sheets(reset_target):
-                if reset_target == "ALL":
-                    st.success("💥 The entire scoreboard has been reset.")
-                else:
-                    st.success(f"💥 All records for **{reset_target}** have been erased.")
+                st.success(f"💥 Records for **{reset_target}** have been erased.")
