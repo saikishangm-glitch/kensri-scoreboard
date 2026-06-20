@@ -5,12 +5,12 @@ import gspread
 
 # --- Configuration & Setup ---
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1EdBKWTfCjK1gA7sxT2TwhSTcuE2zb_jA4oYP55c6wJU/edit"
-# Logo URL updated
-LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS4CIdhBTkIUp9FpB7aaWpBMZkHMJS2RzOyXQ&s"
+LOGO_URL = "logo.png"
 
 NETWORKS = ["AUSTRALIA", "NORTH AMERICA", "SOUTH AMERICA", "AFRICA", "EUROPE", "ASIA"]
 CATEGORIES = ["Scholar Points", "Athlete Points", "Artist Points", "Leader Points"]
 
+# --- Database Functions ---
 @st.cache_data(ttl=60)
 def load_data_from_sheets():
     """Connects to Google Sheets and reads the database."""
@@ -57,6 +57,36 @@ def save_data_to_sheets(new_entry):
         st.error(f"Submission Error: {e}")
         return False
 
+def reset_data_in_sheets(network_to_reset):
+    """Clears entries for a specific network or all networks, preserving headers."""
+    try:
+        gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
+        sh = gc.open_by_url(GOOGLE_SHEET_URL)
+        worksheet = sh.get_worksheet(0)
+        
+        data = worksheet.get_all_values()
+        if len(data) <= 1:
+            return True # Nothing to delete (only headers remain)
+
+        headers = data[0]
+        rows = data[1:]
+        
+        worksheet.clear()
+        worksheet.append_row(headers)
+        
+        if network_to_reset != "ALL":
+            # Filter out the network we want to reset and append the rest back
+            filtered_rows = [row for row in rows if row[0] != network_to_reset]
+            if filtered_rows:
+                worksheet.append_rows(filtered_rows)
+                
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Reset Error: {e}")
+        return False
+
+
 # --- App Layout & Styling ---
 st.set_page_config(page_title="KENSRI Score Board", layout="wide")
 
@@ -72,10 +102,13 @@ html, body, [class*="css"], .stMarkdown { font-family: 'Poppins', sans-serif !im
 </style>
 """, unsafe_allow_html=True)
 
-# --- Header Section with Logo ---
+# --- Header Section ---
 col_logo, col_title = st.columns([1, 5])
 with col_logo:
-    st.image(LOGO_URL, width=120)
+    try:
+        st.image(LOGO_URL, width=120)
+    except:
+        st.write("*(Logo)*")
 with col_title:
     st.markdown("<h1 style='color: #002060; font-weight: 800; font-size: 45px; margin-top: 10px;'>KENSRI SCHOOL & COLLEGE</h1>", unsafe_allow_html=True)
 
@@ -83,94 +116,25 @@ st.markdown("<h2 style='text-align: center; color: white; background-color: #7F1
 
 app_data = load_data_from_sheets()
 
-# --- Sidebar ---
+
+# --- Session State for Authentication ---
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
+
+# --- Sidebar & Navigation ---
 st.sidebar.title("Navigation")
 st.sidebar.markdown("Welcome to the KENSRI Network Score Board.")
 st.sidebar.markdown("---")
-# Stealth Admin Login
-st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True)
-password_attempt = st.sidebar.text_input(" ", type="password", placeholder="...") 
-view_mode = "Admin Panel" if password_attempt == "admin123" else "Public Scoreboard"
 
-# --- Main Logic ---
-if view_mode == "Public Scoreboard":
-    st.markdown(f"<p style='font-size: 18px; font-weight: 600; color: #333;'>📅 <b>Date updated on:</b> <span style='color: #7F1D1D; font-weight: 700;'>{app_data['last_updated']}</span></p>", unsafe_allow_html=True)
-    
-    board = {net: {cat: 0 for cat in CATEGORIES} for net in NETWORKS}
-    for entry in app_data["entries"]:
-        if entry["network"] in board and entry["category"] in board[entry["network"]]:
-            board[entry["network"]][entry["category"]] += int(entry["points"])
-        
-    network_colors = {
-        "AUSTRALIA": "#023020", "NORTH AMERICA": "#0BA3FF", "SOUTH AMERICA": "#FFFF2E",
-        "AFRICA": "#7030A0", "EUROPE": "#000080", "ASIA": "#FF2600"
-    }
-    
-    table_html = "<table class='scoreboard-table'><thead><tr><th style='text-align: left; padding-left: 15px; width: 25%;'>Network</th>"
-    for cat in CATEGORIES: table_html += f"<th>{cat}</th>"
-    table_html += "<th>Total Score</th></tr></thead><tbody>"
-    
-    for net in NETWORKS:
-        row_bg = network_colors[net]
-        total_score = sum(board[net].values())
-        table_html += f"<tr style='background-color: {row_bg};'><td class='network-name'>{net}</td>"
-        for cat in CATEGORIES:
-            table_html += f"<td><div class='score-box'>{board[net][cat]}</div></td>"
-        table_html += f"<td><div class='score-box'>{total_score}</div></td></tr>"
-    table_html += "</tbody></table>"
-    
-    st.markdown(table_html, unsafe_allow_html=True)
-    st.divider()
-    
-    st.markdown("<h3 style='color: #002060; font-weight: 700;'>🏆 Recent Achievements</h3>", unsafe_allow_html=True)
-    if app_data["entries"]:
-        for entry in reversed(app_data["entries"]):
-            st.info(f"🏅 **{entry['student']}** — **{entry['competition']}**! Earned **{entry['points']}** {entry['category']} for **{entry['network']}**.")
-    else:
-        st.write("*No achievement milestones recorded yet.*")
-
-elif view_mode == "Admin Panel":
-    st.sidebar.success("Access Verified: Welcome Admin")
-    st.subheader("Data Entry Panel")
-    
-    with st.form("add_points_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            selected_network = st.selectbox("Select Network", NETWORKS)
-            selected_category = st.selectbox("Select Category", CATEGORIES)
-            points = st.number_input("Points to Award", min_value=1, step=1)
-        with col2:
-            student_name = st.text_input("Student Name")
-            
-        st.markdown("---")
-        st.markdown("#### Achievement Details")
-        achievement_type = st.radio("Type of Achievement", ["Secured a Place / Won", "Participation"])
-        
-        col3, col4 = st.columns(2)
-        with col3:
-            event_name = st.text_input("Event Name (e.g., Inter-School Debate, 100m Sprint)")
-        with col4:
-            event_date = st.date_input("Date of Event")
-            
-        place_secured = ""
-        if achievement_type == "Secured a Place / Won":
-            place_secured = st.text_input("Place Secured (e.g., 1st, Gold, Runner-up)")
-            
-        submitted = st.form_submit_button("Publish & Save Score Updates")
-        
-        if submitted:
-            if student_name.strip() and event_name.strip():
-                if achievement_type == "Secured a Place / Won" and not place_secured.strip():
-                    st.error("Submission rejected: Please specify the place secured.")
-                else:
-                    date_str = event_date.strftime("%d/%m/%Y")
-                    narrative = f"{place_secured} Place in {event_name} on {date_str}" if achievement_type == "Secured a Place / Won" else f"Participated in {event_name} on {date_str}"
-                        
-                    new_entry = {
-                        "network": selected_network, "category": selected_category, "points": points,
-                        "student": student_name, "competition": narrative, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    if save_data_to_sheets(new_entry):
-                        st.success("🎉 Data safely written!")
-            else:
-                st.error("Submission rejected: Please fill all fields.")
+if not st.session_state.admin_logged_in:
+    # Stealth Admin Login
+    st.sidebar.markdown("<br><br><br><br><br>", unsafe_allow_html=True)
+    password_attempt = st.sidebar.text_input("Admin Access", type="password", placeholder="...") 
+    if password_attempt == "admin123":
+        st.session_state.admin_logged_in = True
+        st.rerun()
+    view_mode = "Public Scoreboard"
+else:
+    # Admin is logged in
+    st.sidebar.success("✅ Logged in as Admin")
+    if st.sidebar.
