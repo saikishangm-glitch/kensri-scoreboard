@@ -5,23 +5,20 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- Configuration & Setup ---
-# 🚨 PASTE YOUR COPIED GOOGLE SHEET LINK HERE 🚨
-GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit"
+GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1EdBKWTfCjK1gA7sxT2TwhSTcuE2zb_jA4oYP55c6wJU/edit"
 
 NETWORKS = ["AUSTRALIA", "NORTH AMERICA", "SOUTH AMERICA", "AFRICA", "EUROPE", "ASIA"]
 CATEGORIES = ["Scholar Points", "Athlete Points", "Artist Points", "Leader Points"]
 
-@st.cache_data(ttl=60) # Refreshes data from the cloud every 60 seconds
+@st.cache_data(ttl=60)
 def load_data_from_sheets():
     """Connects to Google Sheets and reads the database."""
     try:
-        # We use Streamlit's secure secrets management for credentials when online
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
-        sh = gc.open_by_url(GOOGLE_SHEET_URL)
+        sh = gc.open_by_key("1EdBKWTfCjK1gA7sxT2TwhSTcuE2zb_jA4oYP55c6wJU")
         worksheet = sh.get_worksheet(0)
         records = worksheet.get_all_records()
         
-        # Find the latest update timestamp
         if records:
             last_updated = records[-1].get("timestamp", "Not yet updated")
             try:
@@ -43,7 +40,6 @@ def save_data_to_sheets(new_entry):
     sh = gc.open_by_url(GOOGLE_SHEET_URL)
     worksheet = sh.get_worksheet(0)
     
-    # Order must match your Google Sheet column headers
     row_to_add = [
         new_entry["network"],
         new_entry["category"],
@@ -53,7 +49,7 @@ def save_data_to_sheets(new_entry):
         new_entry["timestamp"]
     ]
     worksheet.append_row(row_to_add)
-    st.cache_data.clear() # Clear cache so changes show up instantly
+    st.cache_data.clear()
 
 # --- App Layout & Styling ---
 st.set_page_config(page_title="KENSRI Score Board", layout="wide")
@@ -68,7 +64,7 @@ html, body, [class*="css"], .stMarkdown { font-family: 'Poppins', sans-serif !im
 .network-name { 
     font-size: 20px !important; 
     letter-spacing: 1px; 
-    text-shadow: 1px 1px 4px rgba(0,0,0,0.6); /* Added shadow for readability on bright colors */
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.6);
 }
 .score-box { background-color: #ffffff; color: #000000 !important; border-radius: 4px; padding: 6px 0; width: 100px; text-align: center; font-weight: 800; font-size: 18px; margin: 0 auto; display: block; box-shadow: 0 2px 4px rgba(0,0,0,0.15); text-shadow: none; }
 </style>
@@ -95,14 +91,13 @@ if view_mode == "Public Scoreboard":
         if entry["network"] in board and entry["category"] in board[entry["network"]]:
             board[entry["network"]][entry["category"]] += int(entry["points"])
         
-    # YOUR NEW CUSTOM COLOR PALETTE
     network_colors = {
-        "AUSTRALIA": "#023020",      # Dark Green
-        "NORTH AMERICA": "#0BA3FF",  # Light blue
-        "SOUTH AMERICA": "#FFFF2E",  # Yellow
-        "AFRICA": "#7030A0",         # Royal Purple
-        "EUROPE": "#000080",         # Navy Blue
-        "ASIA": "#FF2600"            # Orange
+        "AUSTRALIA": "#023020",
+        "NORTH AMERICA": "#0BA3FF",
+        "SOUTH AMERICA": "#FFFF2E",
+        "AFRICA": "#7030A0",
+        "EUROPE": "#000080",
+        "ASIA": "#FF2600"
     }
     
     table_html = "<table class='scoreboard-table'><thead><tr><th style='text-align: left; padding-left: 15px; width: 25%;'>Network</th>"
